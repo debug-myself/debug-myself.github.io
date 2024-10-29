@@ -24,19 +24,17 @@ readNextPosts = 2
 copyCodeButton = true
 rssAsSocialIcon = true
 locale = "zh-cn"
-math = false # true: enable mathjax globally (default is false)
+math = false           # true: enable mathjax globally (default is false)
 toc = true
 
 # Graphcomment support
 # graphcommentId = ""
 
-GiscusRepo = "cafebeef1/blogtalks"
+GiscusRepo = "debug-myself/blogtalks"
 GiscusRepoId = "R_kgDONHeHIw"
 GiscusCategory = "Announcements"
 GiscusCategoryId = "DIC_kwDONHeHI84Cjynz"
 GiscusDataMapping = "pathname"
-
-UtterancesRepo = "debug-myself/blogtalks"
 
 social = [
     { id = "github", url = "https://github.com/cafebeef1/cafebeef1.github.io" },
