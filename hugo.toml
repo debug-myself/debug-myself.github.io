@@ -1,0 +1,74 @@
+baseURL = 'https://debug-myself.github.io/'
+languageCode = 'zh-cn'
+title = "debug-myself's blog"
+theme = "anubis2"
+
+[pagination]
+pagerSize = 6
+
+[params.author]
+name = "debugmyself"
+location = "China"
+
+[params]
+subtitle = "行到水穷处, 坐看云起时."
+description = "Anubis2 is another simple minimalist theme for Hugo blog engine."
+dateFormat = "2006-01-02"
+paginationSinglePost = true
+
+colorTheme = "auto"
+colorThemeSwitcher = true
+
+readMore = false
+readNextPosts = 2
+copyCodeButton = true
+rssAsSocialIcon = true
+locale = "zh-cn"
+math = false # true: enable mathjax globally (default is false)
+toc = true
+
+# Graphcomment support
+# graphcommentId = ""
+
+GiscusRepo = "cafebeef1/blogtalks"
+GiscusRepoId = "R_kgDONHeHIw"
+GiscusCategory = "Announcements"
+GiscusCategoryId = "DIC_kwDONHeHI84Cjynz"
+GiscusDataMapping = "pathname"
+
+UtterancesRepo = "debug-myself/blogtalks"
+
+social = [
+    { id = "github", url = "https://github.com/cafebeef1/cafebeef1.github.io" },
+    { id = "email", url = "cafebeef1@gmail.com" },
+    # { id = "facebook", url = "#" },
+    # { id = "instagram", url = "#" },
+    # { id = "netease-music", url = "#" },
+    # { id = "telegram", url = "#" },
+    # { id = "x", url = "#" },
+    # { id = "youtube", url = "#" }
+]
+
+[[menu.main]]
+identifier = "home"
+name = "Home"
+url = "/"
+weight = 1
+
+[[menu.main]]
+identifier = "about"
+name = "About"
+url = "/about/"
+weight = 2
+
+[[menu.main]]
+identifier = "tags"
+name = "Tags"
+url = "/tags/"
+weight = 3
+
+[[menu.main]]
+name = "Archive"
+identifier = "archive"
+url = "/posts/"
+weight = 4
