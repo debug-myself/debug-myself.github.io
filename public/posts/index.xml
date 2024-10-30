@@ -50,7 +50,7 @@
 &lt;/div&gt;
 &lt;/h3&gt;
 &lt;p&gt;这是一个国宝
-&lt;img src=&#34;http://localhost:1313/images/%E7%86%8A%E7%8C%AB.png&#34; alt=&#34;国宝&#34; title=&#34;熊猫&#34;&gt;&lt;/p&gt;
+&lt;img src=&#34;https://debug-myself.github.io/images/%E7%86%8A%E7%8C%AB.png&#34; alt=&#34;国宝&#34; title=&#34;熊猫&#34;&gt;&lt;/p&gt;
 &lt;h3 id=&#34;代码测试&#34; &gt;
 &lt;div&gt;
     &lt;a href=&#34;#%e4%bb%a3%e7%a0%81%e6%b5%8b%e8%af%95&#34;&gt;
