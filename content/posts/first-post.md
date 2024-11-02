@@ -1,8 +1,8 @@
 ---
-title: "First Post"
+title: "Hello Blog!"
 subtitle: ""
 date: 2024-10-29T19:54:38+08:00
-lastmod: 2024-10-29T19:54:38+08:00
+lastmod: 2024-11-02T15:25:38+08:00
 keywords: []
 description: ""
 author: "debugmyself"
@@ -68,6 +68,19 @@ fn main() {
 #### Python
 ```Python
 print("Hello, World!")
+```
+
+#### mermaid
+```mermaid
+graph LR
+    one[S1]
+    two[S2]
+    three[S3]
+
+
+    one --> two
+    two --> three
+    three --> one
 ```
 
 ## 结束语

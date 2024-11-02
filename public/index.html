@@ -158,6 +158,10 @@
 
 
 
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true });
+</script>
     
 </head>
 <body>
@@ -399,7 +403,7 @@
             
             
             <h1 class="p-name post-title ">
-                <a class="u-url" href="/posts/first-post/">First Post</a>
+                <a class="u-url" href="/posts/first-post/">Hello Blog!</a>
             </h1>
         </header>
         
@@ -506,7 +510,25 @@
 </div>
 </h4>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-Python" data-lang="Python"><span style="display:flex;"><span>print(<span style="color:#e6db74">&#34;Hello, World!&#34;</span>)
-</span></span></code></pre></div><h2 id="结束语" >
+</span></span></code></pre></div><h4 id="mermaid" >
+<div>
+    <a href="#mermaid">
+        ###
+    </a>
+    mermaid
+</div>
+</h4>
+<pre class="mermaid">
+    graph LR
+    one[S1]
+    two[S2]
+    three[S3]
+
+
+    one --&gt; two
+    two --&gt; three
+    three --&gt; one
+</pre><h2 id="结束语" >
 <div>
     <a href="#%e7%bb%93%e6%9d%9f%e8%af%ad">
         #
@@ -530,7 +552,7 @@
     
         <div class="post-date dt-published">
             <time datetime="2024-10-29">2024-10-29</time>
-            
+            [Last modified: <time datetime="2024-11-02">2024-11-02</time>]
         </div>
     
 

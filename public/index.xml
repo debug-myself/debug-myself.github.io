@@ -13,7 +13,7 @@
     
 
     
-    <lastBuildDate>Tue, 29 Oct 2024 20:35:47 +0800</lastBuildDate>
+    <lastBuildDate>Fri, 01 Nov 2024 23:49:06 +0800</lastBuildDate>
     
     <atom:link href="/index.xml" rel="self" type="application/rss+xml" />
     
@@ -30,7 +30,7 @@
     </item>
     
     <item>
-      <title>First Post</title>
+      <title>Hello Blog!</title>
       <link>/posts/first-post/</link>
       <pubDate>Tue, 29 Oct 2024 19:54:38 +0800</pubDate>
       
@@ -133,7 +133,25 @@
 &lt;/div&gt;
 &lt;/h4&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-Python&#34; data-lang=&#34;Python&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;print(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Hello, World!&amp;#34;&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id=&#34;结束语&#34; &gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h4 id=&#34;mermaid&#34; &gt;
+&lt;div&gt;
+    &lt;a href=&#34;#mermaid&#34;&gt;
+        ###
+    &lt;/a&gt;
+    mermaid
+&lt;/div&gt;
+&lt;/h4&gt;
+&lt;pre class=&#34;mermaid&#34;&gt;
+    graph LR
+    one[S1]
+    two[S2]
+    three[S3]
+
+
+    one --&amp;gt; two
+    two --&amp;gt; three
+    three --&amp;gt; one
+&lt;/pre&gt;&lt;h2 id=&#34;结束语&#34; &gt;
 &lt;div&gt;
     &lt;a href=&#34;#%e7%bb%93%e6%9d%9f%e8%af%ad&#34;&gt;
         #
