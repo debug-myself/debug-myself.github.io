@@ -13,17 +13,315 @@
     
 
     
-    <lastBuildDate>Thu, 31 Oct 2024 15:54:49 +0800</lastBuildDate>
+    <lastBuildDate>Fri, 01 Nov 2024 23:49:06 +0800</lastBuildDate>
     
     <atom:link href="/posts/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
+      <title>如何优雅重启网络服务</title>
+      <link>/posts/2024-11-graceful-restarting/</link>
+      <pubDate>Fri, 01 Nov 2024 23:49:06 +0800</pubDate>
+      
+      <guid>/posts/2024-11-graceful-restarting/</guid>
+      <description>&lt;h2 id=&#34;tldr&#34; &gt;
+&lt;div&gt;
+    &lt;a href=&#34;#tldr&#34;&gt;
+        #
+    &lt;/a&gt;
+    TL;DR
+&lt;/div&gt;
+&lt;/h2&gt;
+&lt;h2 id=&#34;背景&#34; &gt;
+&lt;div&gt;
+    &lt;a href=&#34;#%e8%83%8c%e6%99%af&#34;&gt;
+        #
+    &lt;/a&gt;
+    背景
+&lt;/div&gt;
+&lt;/h2&gt;
+&lt;p&gt;对于一个持续迭代的网络服务, 变更是家常便饭. 常规的变更流程如下:&lt;/p&gt;
+&lt;pre class=&#34;mermaid&#34;&gt;
+    graph LR
+    S1[&amp;#34;更新程序/配置&amp;#34;]
+    S2[&amp;#34;停止当前服务&amp;#34;]
+    S3[&amp;#34;启动新服务&amp;#34;]
+
+    S1 --&amp;gt; S2 --&amp;gt; S3
+&lt;/pre&gt;&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;更新程序/配置&lt;/strong&gt;: 当修复了已知bug或者是新增功能时, 需要更新程序. 或者是更改了配置;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;停止当前服务&lt;/strong&gt;: 为避免和新程序冲突, 需要暂停当前服务;&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;启动新程序&lt;/strong&gt;: 再次启动程序让新程序/配置生效;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;这个变更过程存在很大问题: 变更过程会影响正在使用此服务的用户. 很多成熟的的项目都支持优雅重启(&lt;code&gt;graceful restarting&lt;/code&gt;), 保证重启服务对用户&amp;quot;无感&amp;quot;, 如&lt;code&gt;Nginx&lt;/code&gt;, &lt;code&gt;SSH server&lt;/code&gt;等都支持reload重启方式, 保证重启过程不影响用户使用.&lt;/p&gt;
+&lt;p&gt;普通项目尝尝也有&lt;code&gt;graceful restarting&lt;/code&gt;的需求, &lt;code&gt;graceful restarting&lt;/code&gt;的原理是什么呢? 要回答这个问题, 我们不妨先想想满足什么条件才能算作&lt;code&gt;graceful restarting&lt;/code&gt;? 我认为至少要满足一下条件:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;升级过程中不影响正在使用此服务的用户;&lt;/li&gt;
+&lt;li&gt;升级过程中有新的用户接入时, 也能正常提供服务;&lt;/li&gt;
+&lt;li&gt;服务升级后接入的用户由更新后的程序提供服务;&lt;/li&gt;
+&lt;li&gt;如果升级失败, 仍然可以提供正常服务;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;基于以上条件, 可以想到一个简单的实现方式: 每个需要&lt;code&gt;graceful restarting&lt;/code&gt;的服务负责把监听的&lt;code&gt;socket&lt;/code&gt;设置为&lt;a href=&#34;https://man7.org/linux/man-pages/man7/socket.7.html&#34;&gt;SO_REUSEPORT&lt;/a&gt;, 这样就允许多个进程监听同一个地址. 这个方式看起来能做到&lt;code&gt;graceful restarting&lt;/code&gt;, 但实际上还是存在一些问题的: 多个进程分别创建socket监听同一个地址就会导致每个进程都创建一个&lt;code&gt;socket&lt;/code&gt;, 这种情况下请求到来时, 该由哪个进程来处理是由操作系统决定的(操作系统负责为多个进程做负载均衡). 所以当新老服务进程同时存在时, 无法保证新到来的请求一定被新的服务进程处理.&lt;/p&gt;
+&lt;p&gt;要想解决这个问题, 就要让新老服务进程共享&lt;code&gt;socket&lt;/code&gt;, 所以自然而然的会想到让老的服务进程&lt;code&gt;fork&lt;/code&gt;子进程, 并且把自己监听的&lt;code&gt;socket&lt;/code&gt;继承给子进程. Cloudflare就基于这个原理实现了一个&lt;strong&gt;Go语言&lt;/strong&gt;版本的&lt;code&gt;graceful restarting&lt;/code&gt;库&amp;ndash;&lt;a href=&#34;https://github.com/cloudflare/tableflip&#34;&gt;tableflip&lt;/a&gt;. 下面就来分析一下&lt;code&gt;tableflip&lt;/code&gt;的实现.&lt;/p&gt;
+&lt;h2 id=&#34;tableflip&#34; &gt;
+&lt;div&gt;
+    &lt;a href=&#34;#tableflip&#34;&gt;
+        #
+    &lt;/a&gt;
+    tableflip
+&lt;/div&gt;
+&lt;/h2&gt;
+&lt;h3 id=&#34;tableflip使用示例&#34; &gt;
+&lt;div&gt;
+    &lt;a href=&#34;#tableflip%e4%bd%bf%e7%94%a8%e7%a4%ba%e4%be%8b&#34;&gt;
+        ##
+    &lt;/a&gt;
+    tableflip使用示例
+&lt;/div&gt;
+&lt;/h3&gt;
+&lt;h3 id=&#34;tableflip实现分析&#34; &gt;
+&lt;div&gt;
+    &lt;a href=&#34;#tableflip%e5%ae%9e%e7%8e%b0%e5%88%86%e6%9e%90&#34;&gt;
+        ##
+    &lt;/a&gt;
+    tableflip实现分析
+&lt;/div&gt;
+&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;tableflip&lt;/code&gt;的实现思路: 当进程收到&lt;code&gt;graceful restarting&lt;/code&gt;信号时, 父进程准备好要继承给子进程的socket, 然后创建子进程(&lt;code&gt;fork&lt;/code&gt; + &lt;code&gt;exec&lt;/code&gt;), 子进程继承了父进程已经监听的&lt;code&gt;socket&lt;/code&gt;, 当需要监听一个地址时, 先检查是否已经从父进程那里继承了, 如果已经继承了, 就直接拿来用, 如果没有从父进程继承, 则自己创建新的&lt;code&gt;socket&lt;/code&gt;. 子进程启动后初始化完成通知父进程, 此时父进程就可以退出了.&lt;/p&gt;
+&lt;pre class=&#34;mermaid&#34;&gt;
+    graph TB
+    start(( ))
+    child((Process A&amp;#39;))
+    parent((Process A))
+    parent_dead((Process A)):::killed
+    classDef killed fill:#fff,stroke:#ff0000,stroke-width:2px,color:#808080
+
+    subgraph G1[ ]
+        direction TB
+        start
+        child
+        parent
+
+        style G1 fill:none, stroke: none
+    end
+
+    subgraph G2 [ ]
+        direction LR
+        parent
+        parent_dead
+
+        style G2 fill:none, stroke: none
+    end
+
+    start --&amp;gt;|1 restart| parent
+    parent --&amp;gt; |3 file names| child
+    parent --&amp;gt;|2 fork&amp;#43;exec| child
+    child --&amp;gt;|4 ready| parent
+    parent --&amp;gt; |5 exit| parent_dead
+&lt;/pre&gt;&lt;p&gt;父进程创建子进程的逻辑在源码的&lt;code&gt;child.go:startChild()&lt;/code&gt;中, 以下是简化版本(忽略了错误处理逻辑). startChild()做的事情就是为子进程准备文件描述符和环境变量, 然后创建子进程, 并通过管道和子进程通信.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-Go&#34; data-lang=&#34;Go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;startChild&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;passedFiles&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#a6e22e&#34;&gt;fileName&lt;/span&gt;]&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;file&lt;/span&gt;) (&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;child&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt;) {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// These pipes are used for communication between parent and child
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// readyW is passed to the child, readyR stays with the parent
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// readyW传递给子进程, 子进程启动且准备就绪后通过写readyW通知父进程
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;readyR&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;readyW&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Pipe&lt;/span&gt;() 
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ...
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 父进程向namesW写入文件描述符的信息(connKind, network, addr), 
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 子进程会从namesR读取这些信息, 从而确定从父进程继承过来的文件描述符具体信息
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;namesR&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;namesW&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Pipe&lt;/span&gt;()    
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ...
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Copy passed fds and append the notification pipe
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// fds是需要继承给子进程的文件描述符, 前五个文件描述分别是:
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 0~2: stdin, stdout, stderr,
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 3(readW): 子进程准备就绪时通过此文件描述符通知父进程;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 4(nameR): 子进程从此文件描述符中读取文件描述符信息;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 5...: 需要子进程继承的文件描述符(一般是监听的socket)
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;fds&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; []&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;File&lt;/span&gt;{&lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdin&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdout&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stderr&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;readyW&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;namesR&lt;/span&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;fdNames&lt;/span&gt; [][]&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 注意: fdNames不包含0~4 5个描述符的信息(父子进程约定好了, 0~4文件描述符的作用是已知的)
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;name&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;file&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;range&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;passedFiles&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;nameSlice&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; make([]&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;, len(&lt;span style=&#34;color:#a6e22e&#34;&gt;name&lt;/span&gt;))
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		copy(&lt;span style=&#34;color:#a6e22e&#34;&gt;nameSlice&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;name&lt;/span&gt;[:])
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;fdNames&lt;/span&gt; = append(&lt;span style=&#34;color:#a6e22e&#34;&gt;fdNames&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;nameSlice&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;fds&lt;/span&gt; = append(&lt;span style=&#34;color:#a6e22e&#34;&gt;fds&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;file&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;File&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Copy environment and append the notification env vars
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// environ是要传递给子进程的环境变量, 特别添加了sentinelEnvVar环境变量
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 设置sentinelEnvVar的作用是决定进程如何初始化文件描述符
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;sentinel&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;fmt&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Sprintf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;%s=yes&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;sentinelEnvVar&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;environ&lt;/span&gt; []&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;_&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;val&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;range&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;environ&lt;/span&gt;() {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;val&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;sentinel&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;environ&lt;/span&gt; = append(&lt;span style=&#34;color:#a6e22e&#34;&gt;environ&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;val&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;environ&lt;/span&gt; = append(&lt;span style=&#34;color:#a6e22e&#34;&gt;environ&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;sentinel&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 这里调用newProc创建子进程, 传入了前面准备好的fds和environ
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// newProc会根据当前的平台(Linux or darwin)决定如何创建子进程
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 对Linux而言, newProc的底层是fork+exec
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;proc&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;newProc&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Args&lt;/span&gt;[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;], &lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Args&lt;/span&gt;[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;:], &lt;span style=&#34;color:#a6e22e&#34;&gt;fds&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;environ&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ...
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;exited&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; make(&lt;span style=&#34;color:#66d9ef&#34;&gt;chan&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt;{})
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; make(&lt;span style=&#34;color:#66d9ef&#34;&gt;chan&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;ready&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; make(&lt;span style=&#34;color:#66d9ef&#34;&gt;chan&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;File&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;child&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;proc&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;readyR&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;namesW&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;ready&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;exited&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 通过pipe把子进程继承的文件描述符信息发送给子进程
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;go&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;writeNames&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;fdNames&lt;/span&gt;) 
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 等待子进程结束的信号(正常情况下子进程不应该结束, 如果子进程在父进程之前结束, 说明子进程异常)
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;go&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;waitExit&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;exited&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 等待接收子进程发送过来的reay信号
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;go&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;waitReady&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ready&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// 等待子进程发送ready信号
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; (&lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;child&lt;/span&gt;) &lt;span style=&#34;color:#a6e22e&#34;&gt;waitReady&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ready&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;chan&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;-&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;File&lt;/span&gt;) {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;b&lt;/span&gt; [&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;]&lt;span style=&#34;color:#66d9ef&#34;&gt;byte&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;n&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;_&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;readyR&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Read&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;b&lt;/span&gt;[:]); &lt;span style=&#34;color:#a6e22e&#34;&gt;n&lt;/span&gt; &amp;gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;b&lt;/span&gt;[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;==&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;notifyReady&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// We know that writeNames has exited by this point.
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Closing the FD now signals to the child that the parent
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// has exited.
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;ready&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;-&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;namesW&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;readyR&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Close&lt;/span&gt;()
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// 父进程把文件描述符信息通过c.namesW管道传递给子进程
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; (&lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;child&lt;/span&gt;) &lt;span style=&#34;color:#a6e22e&#34;&gt;writeNames&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;names&lt;/span&gt; [][]&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;) {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;enc&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;gob&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewEncoder&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;namesW&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;names&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;==&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Gob panics on nil
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;_&lt;/span&gt; = &lt;span style=&#34;color:#a6e22e&#34;&gt;enc&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Encode&lt;/span&gt;([][]&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;{})
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;_&lt;/span&gt; = &lt;span style=&#34;color:#a6e22e&#34;&gt;enc&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Encode&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;names&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;子进程启动后会检查继承了父进程的哪些文件描述符, 将文件描述符保存下来, 供后续调用&lt;code&gt;Listen&lt;/code&gt;时查询. 当子进程调用Ready时, 会向父进程发送消息(如果父进程存在).&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-Go&#34; data-lang=&#34;Go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;newParent&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;) (&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;parent&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#a6e22e&#34;&gt;fileName&lt;/span&gt;]&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;file&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt;) {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 父进程在创建子进程时为子进程设置了sentinelEnvVar环境变量, 所以if不成立
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;getenv&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;sentinelEnvVar&lt;/span&gt;) &lt;span style=&#34;color:#f92672&#34;&gt;==&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;, make(&lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#a6e22e&#34;&gt;fileName&lt;/span&gt;]&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;file&lt;/span&gt;), &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 根据child.go:startChild()可知:
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 文件描述符3用于子进程ready后通知父进程
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 文件描述符4用于子进程读取&amp;gt;=5的文件描述符的信息
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;wr&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;newFile&lt;/span&gt;(&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;write&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;rd&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;newFile&lt;/span&gt;(&lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;read&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;names&lt;/span&gt; [][]&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 读取父进程传递的文件描述符信息
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;dec&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;gob&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewDecoder&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;rd&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;dec&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Decode&lt;/span&gt;(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;names&lt;/span&gt;); &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;fmt&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Errorf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;can&amp;#39;t decode names from parent process: %s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 把&amp;gt;=5的文件描述符(fd)和其信息(connKind, network, addr)关联起来
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;files&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; make(&lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#a6e22e&#34;&gt;fileName&lt;/span&gt;]&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;file&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;i&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;parts&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;range&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;names&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;key&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;fileName&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		copy(&lt;span style=&#34;color:#a6e22e&#34;&gt;key&lt;/span&gt;[:], &lt;span style=&#34;color:#a6e22e&#34;&gt;parts&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Start at 5 to account for stdin, etc. and write
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// and read pipes.
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;fd&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;5&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;i&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;closeOnExec&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;fd&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;files&lt;/span&gt;[&lt;span style=&#34;color:#a6e22e&#34;&gt;key&lt;/span&gt;] = &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;file&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;env&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;newFile&lt;/span&gt;(uintptr(&lt;span style=&#34;color:#a6e22e&#34;&gt;fd&lt;/span&gt;), &lt;span style=&#34;color:#a6e22e&#34;&gt;key&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;String&lt;/span&gt;()),
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			uintptr(&lt;span style=&#34;color:#a6e22e&#34;&gt;fd&lt;/span&gt;),
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; make(&lt;span style=&#34;color:#66d9ef&#34;&gt;chan&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;exited&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; make(&lt;span style=&#34;color:#66d9ef&#34;&gt;chan&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt;{})
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;go&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt;() {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;defer&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;rd&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Close&lt;/span&gt;()
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;n&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;io&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Copy&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ioutil&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Discard&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;rd&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;n&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; = &lt;span style=&#34;color:#a6e22e&#34;&gt;errors&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;New&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;unexpected data from parent process&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		} &lt;span style=&#34;color:#66d9ef&#34;&gt;else&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; = &lt;span style=&#34;color:#a6e22e&#34;&gt;fmt&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Errorf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;unexpected error while waiting for parent to exit: %s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;-&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		close(&lt;span style=&#34;color:#a6e22e&#34;&gt;exited&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}()
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;parent&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;wr&lt;/span&gt;:     &lt;span style=&#34;color:#a6e22e&#34;&gt;wr&lt;/span&gt;, &lt;span style=&#34;color:#75715e&#34;&gt;// 记住, parent.wr用于通知父进程
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt;: &lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;exited&lt;/span&gt;: &lt;span style=&#34;color:#a6e22e&#34;&gt;exited&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}, &lt;span style=&#34;color:#a6e22e&#34;&gt;files&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// 调用Ready时, 如果parent存在, 则会调用sendReady
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; (&lt;span style=&#34;color:#a6e22e&#34;&gt;u&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;Upgrader&lt;/span&gt;) &lt;span style=&#34;color:#a6e22e&#34;&gt;Ready&lt;/span&gt;() &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;u&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;readyOnce&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Do&lt;/span&gt;(&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt;() {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;u&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fds&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;closeInherited&lt;/span&gt;()
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		close(&lt;span style=&#34;color:#a6e22e&#34;&gt;u&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;readyC&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	})
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;u&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;PIDFile&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;writePIDFile&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;u&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;PIDFile&lt;/span&gt;); &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;fmt&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Errorf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;tableflip: can&amp;#39;t write PID file: %s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;u&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;parent&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;==&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// 向父进程发送消息
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;u&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;parent&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;sendReady&lt;/span&gt;()
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// 向parent.wr写入消息, 通知父进程
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; (&lt;span style=&#34;color:#a6e22e&#34;&gt;ps&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;parent&lt;/span&gt;) &lt;span style=&#34;color:#a6e22e&#34;&gt;sendReady&lt;/span&gt;() &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;defer&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;ps&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;wr&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Close&lt;/span&gt;()
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;_&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;ps&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;wr&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Write&lt;/span&gt;([]&lt;span style=&#34;color:#66d9ef&#34;&gt;byte&lt;/span&gt;{&lt;span style=&#34;color:#a6e22e&#34;&gt;notifyReady&lt;/span&gt;}); &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;fmt&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Errorf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;can&amp;#39;t notify parent process: %s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;说点题外话: &lt;code&gt;tableflip&lt;/code&gt;的代码不算多, 但是读起来非常绕. 因为这个库的代码同时包含了父进程和子进程的执行逻辑. 父进程的执行流程和子进程的执行流程差别很大, 而且子进程也可能成为父进程, 所以也会执行父进程的逻辑. 此外阅读&lt;code&gt;tableflip&lt;/code&gt;的源码还要对Linux环境下文件描述符(子进程继承了父进程的文件描述符), 管道(父子进程间使用管道进行通信)等有一些了解. 所以&lt;/p&gt;
+&lt;h2 id=&#34;参考&#34; &gt;
+&lt;div&gt;
+    &lt;a href=&#34;#%e5%8f%82%e8%80%83&#34;&gt;
+        #
+    &lt;/a&gt;
+    参考
+&lt;/div&gt;
+&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://blog.cloudflare.com/graceful-upgrades-in-go/&#34;&gt;Graceful upgrades in Go&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.blog/news-insights/the-library/glb-part-2-haproxy-zero-downtime-zero-delay-reloads-with-multibinder/&#34;&gt;GLB part 2: HAProxy zero-downtime, zero-delay reloads with multibinder&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Q: 连接器server父子进程共享了日志文件的文件表项吗? 为什么日志给是正常?
+A: 因为打开日志文件时设置了O_APPEND, O_APPEND 在多个进程或线程对同一文件描述符写入时，能避免写入冲突。操作系统会确保每次写入都是原子的，即便多个进程或线程同时写入，也不会发生写入位置交错的问题（比如写到相同的位置）。&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
       <title>Hello Blog!</title>
-      <link>/posts/first-post/</link>
+      <link>/posts/2024-10-first-post/</link>
       <pubDate>Tue, 29 Oct 2024 19:54:38 +0800</pubDate>
       
-      <guid>/posts/first-post/</guid>
+      <guid>/posts/2024-10-first-post/</guid>
       <description>&lt;h2 id=&#34;前言&#34; &gt;
 &lt;div&gt;
     &lt;a href=&#34;#%e5%89%8d%e8%a8%80&#34;&gt;
