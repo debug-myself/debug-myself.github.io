@@ -2,22 +2,9 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-        <loc>https://debug-myself.github.io/</loc>
-        <lastmod>2024-11-02T15:25:38+08:00</lastmod>
-      </url><url>
-        <loc>https://debug-myself.github.io/draft/</loc>
-        <lastmod>2024-11-01T23:49:06+08:00</lastmod>
-      </url><url>
-        <loc>https://debug-myself.github.io/posts/</loc>
-        <lastmod>2024-11-02T15:25:38+08:00</lastmod>
-      </url><url>
-        <loc>https://debug-myself.github.io/about/</loc>
-        <lastmod>2024-10-29T20:35:47+08:00</lastmod>
-      </url><url>
-        <loc>https://debug-myself.github.io/posts/first-post/</loc>
-        <lastmod>2024-11-02T15:25:38+08:00</lastmod>
-      </url><url>
         <loc>https://debug-myself.github.io/categories/</loc>
+      </url><url>
+        <loc>https://debug-myself.github.io/</loc>
       </url><url>
         <loc>https://debug-myself.github.io/tags/</loc>
       </url>

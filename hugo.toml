@@ -37,14 +37,13 @@ GiscusCategoryId = "DIC_kwDONHeHI84Cjynz"
 GiscusDataMapping = "pathname"
 
 social = [
-    { id = "github", url = "https://github.com/cafebeef1/cafebeef1.github.io" },
+    { id = "github", url = "https://github.com/debug-myself/debug-myself.github.io" },
     { id = "email", url = "cafebeef1@gmail.com" },
     # { id = "facebook", url = "#" },
     # { id = "instagram", url = "#" },
     # { id = "netease-music", url = "#" },
     # { id = "telegram", url = "#" },
     # { id = "x", url = "#" },
-    # { id = "youtube", url = "#" }
 ]
 
 [[menu.main]]
