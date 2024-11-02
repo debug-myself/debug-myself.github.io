@@ -275,12 +275,8 @@ func (ps *parent) sendReady() error {
 }
 ```
 
-说点题外话: `tableflip`的代码不算多, 但是读起来非常绕. 因为这个库的代码同时包含了父进程和子进程的执行逻辑. 父进程的执行流程和子进程的执行流程差别很大, 而且子进程也可能成为父进程, 所以也会执行父进程的逻辑. 此外阅读`tableflip`的源码还要对Linux环境下文件描述符(子进程继承了父进程的文件描述符), 管道(父子进程间使用管道进行通信)等有一些了解. 所以
+说点题外话: `tableflip`的代码不算多, 但是读起来非常绕. 因为这个库的代码同时包含了父进程和子进程的执行逻辑. 父进程的执行流程和子进程的执行流程差别很大, 而且子进程也可能成为父进程, 所以也会执行父进程的逻辑. 此外阅读`tableflip`的源码还要对Linux环境下文件描述符(子进程继承了父进程的文件描述符), 管道(父子进程间使用管道进行通信)等有一些了解.
 
 ## 参考
 * [Graceful upgrades in Go](https://blog.cloudflare.com/graceful-upgrades-in-go/)
 * [GLB part 2: HAProxy zero-downtime, zero-delay reloads with multibinder](https://github.blog/news-insights/the-library/glb-part-2-haproxy-zero-downtime-zero-delay-reloads-with-multibinder/)
-
-
-Q: 连接器server父子进程共享了日志文件的文件表项吗? 为什么日志给是正常?
-A: 因为打开日志文件时设置了O_APPEND, O_APPEND 在多个进程或线程对同一文件描述符写入时，能避免写入冲突。操作系统会确保每次写入都是原子的，即便多个进程或线程同时写入，也不会发生写入位置交错的问题（比如写到相同的位置）。
