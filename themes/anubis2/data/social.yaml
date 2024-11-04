@@ -15,6 +15,7 @@ social_icons:
   twitter: https://twitter.com/%s
   vk: https://vk.com/%s
   youtube: https://www.youtube.com/c/%s
+  exercism: https://exercism.org/%s
   4chan:
   # docs:
   gitlab:

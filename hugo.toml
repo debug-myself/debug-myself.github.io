@@ -39,7 +39,7 @@ GiscusDataMapping = "pathname"
 social = [
     { id = "github", url = "https://github.com/debug-myself/debug-myself.github.io" },
     { id = "email", url = "cafebeef1@gmail.com" },
-    # { id = "facebook", url = "#" },
+    { id = "exercism", url = "https://exercism.org/profiles/debug-myself" },
     # { id = "instagram", url = "#" },
     # { id = "netease-music", url = "#" },
     # { id = "telegram", url = "#" },

@@ -37,6 +37,7 @@ Here is a list of available icons, their shortcodes, and what they look like whe
 | teams      | `{{</* icon "teams" */>}}`         | {{< icon "teams" >}}         |
 | twitch     | `{{</* icon "twitch" */>}}`        | {{< icon "twitch" >}}        |
 | facebook   | `{{</* icon "facebook" */>}}`      | {{< icon "facebook" >}}      |
+| exercism   | `{{</* icon "exercism" */>}}`      | {{< icon "exercism" >}}      |
 | medium     | `{{</* icon "medium" */>}}`        | {{< icon "medium" >}}        |
 | skype      | `{{</* icon "skype" */>}}`         | {{< icon "skype" >}}         |
 | telegram   | `{{</* icon "telegram" */>}}`      | {{< icon "telegram" >}}      |

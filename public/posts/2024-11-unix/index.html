@@ -10,43 +10,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer-when-downgrade">
 
-<title>Todo - debug-myself&rsquo;s blog</title>
+<title>Unix回忆录 - debug-myself&rsquo;s blog</title>
 
-<meta name="description" content="
-
- shell的执行过程:
-
-
- Linux用户登录过程
-
-
- 在shell中输入命令, 命令是如何被执行的?
-参考资料:
-
-https://medium.com/@bdov_/https-medium-com-bdov-how-does-the-shell-command-ls-work-internally-11ea701fa1d2
-
-
-
-
-
- unix历史
-
-
- 文件描述符
-
-
- 平滑升级
-
- graceful upgrade in go
- oxy: the journey of graceful restarts
-
-
-
-
-tableflip 平滑升级
-Linux fd
-
-">
+<meta name="description" content="这是第二次读[Unix传奇],">
 
 
 
@@ -440,7 +406,7 @@ Linux fd
     <article class="post h-entry">
         <div class="post-header">
             <header>
-                <h1 class="p-name post-title draft">Todo</h1>
+                <h1 class="p-name post-title draft">Unix回忆录</h1>
                 
 
             </header>
@@ -458,7 +424,7 @@ Linux fd
         </div>
     
 
-    <a class="post-hidden-url u-url" href="/todo/">/todo/</a>
+    <a class="post-hidden-url u-url" href="/posts/2024-11-unix/">/posts/2024-11-unix/</a>
     <a href="http://localhost:1313/" class="p-name p-author post-hidden-author h-card" rel="me">debugmyself</a>
 
 
@@ -501,41 +467,7 @@ Linux fd
 </script>
 
         <div class="content e-content">
-            <ul>
-<li>
-<p><input disabled="" type="checkbox"> shell的执行过程:</p>
-<ul>
-<li>
-<p><input disabled="" type="checkbox"> Linux用户登录过程</p>
-</li>
-<li>
-<p><input disabled="" type="checkbox"> 在shell中输入命令, 命令是如何被执行的?</p>
-<p>参考资料:</p>
-<ul>
-<li><a href="https://medium.com/@bdov_/https-medium-com-bdov-how-does-the-shell-command-ls-work-internally-11ea701fa1d2">https://medium.com/@bdov_/https-medium-com-bdov-how-does-the-shell-command-ls-work-internally-11ea701fa1d2</a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li>
-<p><input disabled="" type="checkbox"> unix历史</p>
-</li>
-<li>
-<p><input disabled="" type="checkbox"> 文件描述符</p>
-</li>
-<li>
-<p><input disabled="" type="checkbox"> 平滑升级</p>
-<ul>
-<li><input disabled="" type="checkbox"> <a href="https://blog.cloudflare.com/graceful-upgrades-in-go/">graceful upgrade in go</a></li>
-<li><input disabled="" type="checkbox"> <a href="https://blog.cloudflare.com/graceful-upgrades-in-go/">oxy: the journey of graceful restarts</a></li>
-</ul>
-</li>
-</ul>
-<ol>
-<li>tableflip 平滑升级</li>
-<li>Linux fd</li>
-<li></li>
-</ol>
+            <p>这是第二次读[Unix传奇],</p>
 
         </div>
 
@@ -552,9 +484,80 @@ Linux fd
     
 
     
+        
+    
+    
+    <div class="pagination post-pagination">
+        <div class="left pagination-item ">
+            
+                <a href="/posts/2024-11-graceful-restarting/">如何优雅重启网络服务</a>
+            
+        </div>
+        <div class="right pagination-item ">
+            
+                <a href="/posts/2024-11-linux-shell-interal/">Linux Shell Internals</a>
+            
+        </div>
+    </div>
+
+
+
+
+
+    
 
     
         
+
+
+
+
+
+
+
+
+
+        
+
+<script>
+        function detectCurrentScheme2() {
+                const defaultTheme = "auto";
+                if (localStorage !== null && localStorage.getItem("user-color-scheme")) {
+                        return localStorage.getItem("user-color-scheme");
+                }
+                if (defaultTheme === "dark" || defaultTheme === "light") {
+                        return defaultTheme;
+                }
+                return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+
+        let giscusTheme = detectCurrentScheme2();
+        let giscusAttributes = {
+                src: "https://giscus.app/client.js",
+                "data-repo": "debug-myself\/blogtalks",
+                "data-repo-id": "R_kgDONHeHIw",
+                "data-category": "Announcements",
+                "data-category-id": "DIC_kwDONHeHI84Cjynz",
+                "data-mapping": "pathname",
+                "data-strict": "0",
+                "data-reactions-enabled": "1",
+                "data-emit-metadata": "0",
+                "data-input-position": "bottom",
+                "data-theme": giscusTheme,
+                "data-lang": "en",
+                crossorigin: "anonymous",
+                lazyload: "false",
+                async: true,
+        };
+        let main = document.querySelector("main");
+        let giscusScript = document.createElement("script");
+        Object.entries(giscusAttributes).forEach(([key, value]) => giscusScript.setAttribute(key, value));
+        main.appendChild(giscusScript);
+</script>
+
+
+
+
     
 
     

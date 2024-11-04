@@ -10,42 +10,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer-when-downgrade">
 
-<title>Todo - debug-myself&rsquo;s blog</title>
+<title>Linux Shell Internals - debug-myself&rsquo;s blog</title>
 
 <meta name="description" content="
 
- shell的执行过程:
-
-
- Linux用户登录过程
-
-
- 在shell中输入命令, 命令是如何被执行的?
-参考资料:
-
-https://medium.com/@bdov_/https-medium-com-bdov-how-does-the-shell-command-ls-work-internally-11ea701fa1d2
+    
+        #
+    
+    参考
 
 
 
-
-
- unix历史
-
-
- 文件描述符
-
-
- 平滑升级
-
- graceful upgrade in go
- oxy: the journey of graceful restarts
-
-
-
-
-tableflip 平滑升级
-Linux fd
-
+How Does the Shell Command ls Work Internally?
 ">
 
 
@@ -440,7 +416,7 @@ Linux fd
     <article class="post h-entry">
         <div class="post-header">
             <header>
-                <h1 class="p-name post-title draft">Todo</h1>
+                <h1 class="p-name post-title draft">Linux Shell Internals</h1>
                 
 
             </header>
@@ -458,7 +434,7 @@ Linux fd
         </div>
     
 
-    <a class="post-hidden-url u-url" href="/todo/">/todo/</a>
+    <a class="post-hidden-url u-url" href="/posts/2024-11-linux-shell-interal/">/posts/2024-11-linux-shell-interal/</a>
     <a href="http://localhost:1313/" class="p-name p-author post-hidden-author h-card" rel="me">debugmyself</a>
 
 
@@ -478,6 +454,16 @@ Linux fd
 
 
   
+  
+  
+  <details class="toc noselect">
+    <summary>Table of Contents</summary>
+    <div class="inner"><nav id="TableOfContents">
+  <ul>
+    <li><a href="#参考">参考</a></li>
+  </ul>
+</nav></div>
+  </details>
   
 
 
@@ -501,41 +487,17 @@ Linux fd
 </script>
 
         <div class="content e-content">
-            <ul>
-<li>
-<p><input disabled="" type="checkbox"> shell的执行过程:</p>
+            <h2 id="参考" >
+<div>
+    <a href="#%e5%8f%82%e8%80%83">
+        #
+    </a>
+    参考
+</div>
+</h2>
 <ul>
-<li>
-<p><input disabled="" type="checkbox"> Linux用户登录过程</p>
-</li>
-<li>
-<p><input disabled="" type="checkbox"> 在shell中输入命令, 命令是如何被执行的?</p>
-<p>参考资料:</p>
-<ul>
-<li><a href="https://medium.com/@bdov_/https-medium-com-bdov-how-does-the-shell-command-ls-work-internally-11ea701fa1d2">https://medium.com/@bdov_/https-medium-com-bdov-how-does-the-shell-command-ls-work-internally-11ea701fa1d2</a></li>
+<li><a href="https://medium.com/@bdov_/https-medium-com-bdov-how-does-the-shell-command-ls-work-internally-11ea701fa1d2">How Does the Shell Command ls Work Internally?</a></li>
 </ul>
-</li>
-</ul>
-</li>
-<li>
-<p><input disabled="" type="checkbox"> unix历史</p>
-</li>
-<li>
-<p><input disabled="" type="checkbox"> 文件描述符</p>
-</li>
-<li>
-<p><input disabled="" type="checkbox"> 平滑升级</p>
-<ul>
-<li><input disabled="" type="checkbox"> <a href="https://blog.cloudflare.com/graceful-upgrades-in-go/">graceful upgrade in go</a></li>
-<li><input disabled="" type="checkbox"> <a href="https://blog.cloudflare.com/graceful-upgrades-in-go/">oxy: the journey of graceful restarts</a></li>
-</ul>
-</li>
-</ul>
-<ol>
-<li>tableflip 平滑升级</li>
-<li>Linux fd</li>
-<li></li>
-</ol>
 
         </div>
 
@@ -552,9 +514,80 @@ Linux fd
     
 
     
+        
+    
+    
+    <div class="pagination post-pagination">
+        <div class="left pagination-item ">
+            
+                <a href="/posts/2024-11-unix/">Unix回忆录</a>
+            
+        </div>
+        <div class="right pagination-item ">
+            
+                <a href="/posts/2024-10-first-post/">Hello Blog!</a>
+            
+        </div>
+    </div>
+
+
+
+
+
+    
 
     
         
+
+
+
+
+
+
+
+
+
+        
+
+<script>
+        function detectCurrentScheme2() {
+                const defaultTheme = "auto";
+                if (localStorage !== null && localStorage.getItem("user-color-scheme")) {
+                        return localStorage.getItem("user-color-scheme");
+                }
+                if (defaultTheme === "dark" || defaultTheme === "light") {
+                        return defaultTheme;
+                }
+                return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+
+        let giscusTheme = detectCurrentScheme2();
+        let giscusAttributes = {
+                src: "https://giscus.app/client.js",
+                "data-repo": "debug-myself\/blogtalks",
+                "data-repo-id": "R_kgDONHeHIw",
+                "data-category": "Announcements",
+                "data-category-id": "DIC_kwDONHeHI84Cjynz",
+                "data-mapping": "pathname",
+                "data-strict": "0",
+                "data-reactions-enabled": "1",
+                "data-emit-metadata": "0",
+                "data-input-position": "bottom",
+                "data-theme": giscusTheme,
+                "data-lang": "en",
+                crossorigin: "anonymous",
+                lazyload: "false",
+                async: true,
+        };
+        let main = document.querySelector("main");
+        let giscusScript = document.createElement("script");
+        Object.entries(giscusAttributes).forEach(([key, value]) => giscusScript.setAttribute(key, value));
+        main.appendChild(giscusScript);
+</script>
+
+
+
+
     
 
     
